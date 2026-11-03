@@ -18,6 +18,7 @@ from sf_mcp.config import (
     RATE_LIMIT_MAX_RETRIES,
     RATE_LIMIT_RETRY_AFTER_SECONDS,
     get_api_host,
+    writes_allowed,
 )
 from sf_mcp.logging_config import audit_log
 from sf_mcp.rate_limiter import RateLimitExceeded, get_rate_limiter
@@ -245,6 +246,140 @@ def make_odata_request(
             duration_ms=duration_ms,
         )
         return {"error": f"JSON parse error: {str(e)}", "response_preview": response.text[:500]}
+
+
+def check_write_allowed(dry_run: bool = True) -> bool:
+    """Return the write flag, refusing real writes when disabled. No environment restrictions."""
+    allow_write = writes_allowed()
+    if not dry_run and not allow_write:
+        raise PermissionError("Writes are disabled. Set SF_ALLOW_WRITE=true to enable real mutations.")
+    return allow_write
+
+
+def make_odata_mutation(
+    instance: str,
+    endpoint: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    *,
+    method: str = "POST",
+    payload: Any = None,
+    params: dict | None = None,
+    dry_run: bool = True,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Preview or execute a generic OData mutation; no entity-specific payload handling.
+
+    Previews require no credentials or HTTP. Real writes require SF_ALLOW_WRITE=true.
+    Successful writes invalidate the instance cache, the finest scope it supports.
+    """
+    req_id = request_id or str(uuid.uuid4())[:8]
+    start_time = time.time()
+    method = method.upper()
+    allow_write = False
+    user_id = ""
+
+    def log(outcome: str, **details: Any) -> None:
+        audit_log(
+            event_type="api_mutation",
+            instance=instance,
+            user_id=user_id,
+            status="success" if outcome in {"preview", "success"} else "error",
+            details={
+                "method": method,
+                "endpoint": endpoint,
+                "dry_run": dry_run,
+                "allow_write": allow_write,
+                "outcome": outcome,
+                **details,
+            },
+            request_id=req_id,
+            duration_ms=(time.time() - start_time) * 1000,
+        )
+
+    try:
+        allow_write = check_write_allowed(dry_run)
+    except PermissionError as e:
+        log("blocked")
+        return {"error": str(e)}
+
+    if method not in {"POST", "PUT", "PATCH", "MERGE", "DELETE"}:
+        log("invalid_method")
+        return {"error": f"Unsupported mutation method: {method}"}
+
+    try:
+        api_host = get_api_host(data_center, environment)
+    except ValueError as e:
+        log("validation_error")
+        return {"error": str(e)}
+
+    url = f"https://{api_host}{endpoint}"
+    if dry_run:
+        log("preview")
+        return {
+            "method": method,
+            "url": url,
+            "endpoint": endpoint,
+            "payload": payload,
+            "params": params,
+            "dry_run": True,
+            "allow_write": allow_write,
+        }
+
+    user_id, password = resolve_credentials(auth_user_id, auth_password)
+    if not user_id or not password:
+        log("missing_credentials")
+        return {"error": "Missing credentials. auth_user_id and auth_password parameters are required."}
+
+    try:
+        response = _execute_with_rate_limit(
+            instance,
+            user_id,
+            req_id,
+            endpoint,
+            lambda: get_session().request(
+                method,
+                url,
+                auth=(f"{user_id}@{instance}", password),
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                params=params,
+                json=payload,
+                timeout=DEFAULT_TIMEOUT,
+                allow_redirects=False,
+            ),
+        )
+    except requests.exceptions.RequestException:
+        log("request_exception")
+        return {"error": "Mutation request failed. The write outcome may be unknown; verify before retrying."}
+
+    if isinstance(response, dict):
+        log("rate_limited")
+        return response
+    if not 200 <= response.status_code < 300:
+        log("http_error", http_status=response.status_code)
+        message = "Authentication failed. Check credentials." if response.status_code == 401 else response.text[:500]
+        return {"error": f"HTTP {response.status_code}", "message": message}
+
+    # A write can succeed even if its response is empty or cannot be parsed.
+    try:
+        get_cache().invalidate(instance=instance)
+    except Exception:
+        log("cache_invalidation_failed", http_status=response.status_code)
+
+    log("success", http_status=response.status_code)
+    if response.status_code == 204 or not response.text.strip():
+        return {"success": True, "http_status": response.status_code, "dry_run": False}
+    try:
+        return response.json()
+    except ValueError:
+        return {
+            "success": True,
+            "http_status": response.status_code,
+            "dry_run": False,
+            "warning": "Write succeeded, but the response was not valid JSON.",
+        }
 
 
 def make_metadata_request(

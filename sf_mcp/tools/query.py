@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sf_mcp.client import make_odata_request, make_paginated_odata_request
+from sf_mcp.client import make_odata_mutation, make_odata_request, make_paginated_odata_request
 from sf_mcp.config import DEFAULT_MAX_PAGES
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
@@ -279,3 +279,71 @@ def _extract_picklist_values(result: dict, locale: str, include_inactive: bool) 
         values.append(value_info)
 
     return values, inactive_count
+
+
+@mcp.tool()
+@sf_tool("upsert_picklist_value", validate={"locale": "locale"})
+def upsert_picklist_value(
+    instance: str,
+    picklist_id: str,
+    external_code: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    label: str | None = None,
+    locale: str = "en-US",
+    status: str | None = None,
+    sort_order: int | None = None,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or POST one PickListValueV2 value; no legacy write fallback.
+
+    Uses POST /odata/v2/upsert?purgeType=incremental with SFOData metadata.
+    Sends a JSON array containing one entity, following the conventional SF
+    upsert function-import pattern for an UpsertResult collection. No automatic
+    retry, lookup, or parent picklist workflow is performed.
+
+    label and locale produce a localized SF property (en-US -> label_en_US).
+    fields accepts exact SF property names, including additional label_* fields
+    and PickListV2_effectiveStartDate (supply the parent's date when required).
+    Inserts require at least one label property. Explicit arguments and generated
+    metadata override fields. Omitted status/sort_order stay omitted. IDs are
+    JSON values, not OData literals, so quotes are preserved unchanged.
+
+    dry_run defaults to True (no HTTP). Real writes require SF_ALLOW_WRITE=true;
+    there is no environment whitelist. Returns the M0 preview or SF response.
+    """
+    if not picklist_id.strip() or not external_code.strip():
+        return {"error": "picklist_id and external_code must not be empty"}
+    if label is not None and not locale:
+        return {"error": "locale must not be empty when label is provided"}
+
+    payload = dict(fields or {})
+    payload["PickListV2_id"] = picklist_id
+    payload["externalCode"] = external_code
+    payload["__metadata"] = {"uri": "PickListValueV2", "type": "SFOData.PickListValueV2"}
+    if label is not None:
+        payload[f"label_{locale.replace('-', '_')}"] = label
+    if status is not None:
+        payload["status"] = status
+    if sort_order is not None:
+        payload["sortOrder"] = sort_order
+    return make_odata_mutation(
+        instance,
+        "/odata/v2/upsert",
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        method="POST",
+        params={"purgeType": "incremental"},
+        payload=[payload],
+        dry_run=dry_run,
+        request_id=request_id,
+    )

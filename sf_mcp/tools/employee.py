@@ -7,8 +7,63 @@ from sf_mcp.client import make_odata_request
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
 from sf_mcp.server import mcp
+from sf_mcp.tools.ec_upsert import upsert_ec_entity
 from sf_mcp.tools.utils import display_name as _display_name
 from sf_mcp.validation import sanitize_odata_string
+
+
+BACKGROUND_TYPES = frozenset({
+    "Awards", "Benefitselection", "Community", "Compensation", "Courses", "Documents",
+    "Education", "Fsaelection", "FuncExperience", "Googledocs", "InsideWorkExperience",
+    "Languages", "LeadExperience", "Memberships", "Mobility", "OutsideWorkExperience",
+    "PreferredNextMove", "Promotability", "SpecialAssign",
+    "SysScoreCardDevelopmentObjectivesPortlet", "TalentPool", "TalentPoolcorp",
+    "VarPayEmpHistData", "VarPayEmpHistDataECSource",
+})
+_BACKGROUND_ID_ONLY_TYPES = frozenset({"VarPayEmpHistData", "VarPayEmpHistDataECSource"})
+
+
+@mcp.tool()
+@sf_tool("upsert_background_element")
+def upsert_background_element(
+    instance: str,
+    background_type: str,
+    background_element_id: str | int,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    user_id: str = "",
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one Background employee profile portlet; defaults to a dry-run preview.
+
+    background_type selects a supported type, with an optional Background_ prefix.
+    background_element_id is always required. user_id is required except for
+    VarPayEmpHistData and VarPayEmpHistDataECSource, where this argument is ignored
+    (userId may still be supplied through fields). Unknown types return valid_types.
+    Explicit keys and generated metadata override fields. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    background_type = background_type.removeprefix("Background_")
+    if background_type not in BACKGROUND_TYPES:
+        return {
+            "error": f"Unknown background_type '{background_type}'",
+            "valid_types": sorted(BACKGROUND_TYPES),
+        }
+    keys: dict[str, Any] = {"background_element_id": background_element_id}
+    if background_type not in _BACKGROUND_ID_ONLY_TYPES:
+        keys["user_id"] = user_id
+    return upsert_ec_entity(
+        f"Background_{background_type}", keys,
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
 
 
 @mcp.tool()
@@ -905,3 +960,653 @@ def get_probation_end_dates(
         "within_days": within_days,
         "filters_applied": {"department": department or None},
     }
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_job")
+def upsert_emp_job(
+    instance: str,
+    user_id: str,
+    start_date: str,
+    seq_number: str | int,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one EmpJob record via POST /odata/v2/upsert.
+
+    Required business keys: user_id, start_date, seq_number.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpJob",
+        {"user_id": user_id, "start_date": start_date, "seq_number": seq_number},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_employment")
+def upsert_emp_employment(
+    instance: str,
+    person_id_external: str,
+    user_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one EmpEmployment record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, user_id.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpEmployment",
+        {"person_id_external": person_id_external, "user_id": user_id},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_job_relationship")
+def upsert_emp_job_relationship(
+    instance: str,
+    user_id: str,
+    start_date: str,
+    relationship_type: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one EmpJobRelationships record via POST /odata/v2/upsert.
+
+    Required business keys: user_id, start_date, relationship_type.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpJobRelationships",
+        {"user_id": user_id, "start_date": start_date, "relationship_type": relationship_type},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_person")
+def upsert_per_person(
+    instance: str,
+    person_id_external: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerPerson record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerPerson",
+        {"person_id_external": person_id_external},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_personal")
+def upsert_per_personal(
+    instance: str,
+    person_id_external: str,
+    start_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerPersonal record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, start_date.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerPersonal",
+        {"person_id_external": person_id_external, "start_date": start_date},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_email")
+def upsert_per_email(
+    instance: str,
+    person_id_external: str,
+    email_type: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerEmail record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, email_type.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerEmail",
+        {"person_id_external": person_id_external, "email_type": email_type},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_phone")
+def upsert_per_phone(
+    instance: str,
+    person_id_external: str,
+    phone_type: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerPhone record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, phone_type.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerPhone",
+        {"person_id_external": person_id_external, "phone_type": phone_type},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_address")
+def upsert_per_address(
+    instance: str,
+    person_id_external: str,
+    address_type: str,
+    start_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerAddressDEFLT record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, address_type, start_date.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerAddressDEFLT",
+        {"person_id_external": person_id_external, "address_type": address_type, "start_date": start_date},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_national_id")
+def upsert_per_national_id(
+    instance: str,
+    person_id_external: str,
+    country: str,
+    card_type: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Preview or upsert one PerNationalId record via POST /odata/v2/upsert.
+
+    Required business keys: person_id_external, country, card_type.
+    fields accepts SF properties and known snake_case key/date aliases.
+    Explicit keys and generated SFOData metadata override fields. Dates pass
+    through in SF OData format; supply tenant-required properties in fields.
+    No event reason or effective date is inferred. dry_run defaults to True;
+    real writes require SF_ALLOW_WRITE=true, with no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "PerNationalId",
+        {"person_id_external": person_id_external, "country": country, "card_type": card_type},
+        instance,
+        data_center,
+        environment,
+        auth_user_id,
+        auth_password,
+        fields,
+        dry_run,
+        request_id,
+    )
+
+
+PER_GLOBAL_INFO_COUNTRIES = frozenset(
+    {
+        "ARE", "ARG", "AUS", "AUT", "BEL", "BGD", "BRA", "CAN", "CHE", "CHL", "CHN", "COL",
+        "CZE", "DEU", "DNK", "EGY", "ESP", "FIN", "FRA", "GBR", "GTM", "HKG", "HUN", "IDN",
+        "IND", "IRL", "ITA", "JPN", "KOR", "LKA", "MEX", "MYS", "NLD", "NOR", "NZL", "OMN",
+        "PER", "PHL", "POL", "PRT", "QAT", "ROU", "RUS", "SAU", "SGP", "SWE", "THA", "TUR",
+        "TWN", "USA", "VEN", "VNM", "ZAF",
+    }
+)
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_compensation")
+def upsert_emp_compensation(
+    instance: str,
+    user_id: str,
+    start_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpCompensation record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpCompensation",
+        {"user_id": user_id, "start_date": start_date},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_pay_comp_recurring")
+def upsert_emp_pay_comp_recurring(
+    instance: str,
+    user_id: str,
+    start_date: str,
+    seq_number: str | int,
+    pay_component: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpPayCompRecurring record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpPayCompRecurring",
+        {"user_id": user_id, "start_date": start_date, "seq_number": seq_number, "pay_component": pay_component},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_pay_comp_non_recurring")
+def upsert_emp_pay_comp_non_recurring(
+    instance: str,
+    user_id: str,
+    pay_date: str,
+    pay_component_code: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpPayCompNonRecurring record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpPayCompNonRecurring",
+        {"user_id": user_id, "pay_date": pay_date, "pay_component_code": pay_component_code},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_work_permit")
+def upsert_emp_work_permit(
+    instance: str,
+    user_id: str,
+    country: str,
+    document_type: str,
+    document_number: str,
+    issue_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpWorkPermit record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "EmpWorkPermit",
+        {
+            "user_id": user_id, "country": country, "document_type": document_type,
+            "document_number": document_number, "issue_date": issue_date,
+        },
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_employment_termination")
+def upsert_emp_employment_termination(
+    instance: str,
+    person_id_external: str,
+    user_id: str,
+    end_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpEmploymentTermination record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Dangerous: terminates employment; review all fields and dates with dry_run first.
+    """
+    return upsert_ec_entity(
+        "EmpEmploymentTermination",
+        {"person_id_external": person_id_external, "user_id": user_id, "end_date": end_date},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_emp_employment_higher_duty")
+def upsert_emp_employment_higher_duty(
+    instance: str,
+    user_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one EmpEmploymentHigherDuty record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Only userId is a metadata key; supply other properties through fields.
+    """
+    return upsert_ec_entity(
+        "EmpEmploymentHigherDuty",
+        {"user_id": user_id},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_user")
+def upsert_user(
+    instance: str,
+    user_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one User record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Large surface (login/HRIS hybrid): prefer Per*/Emp* for person/job data.
+    The caller owns field choice; review with dry_run first.
+    """
+    return upsert_ec_entity(
+        "User",
+        {"user_id": user_id},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_per_global_info")
+def upsert_per_global_info(
+    instance: str,
+    country_code: str,
+    person_id_external: str,
+    start_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one PerGlobalInfo{ISO3} record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    The selected ISO3 country is also the authoritative payload country.
+
+    country_code must be an exact uppercase ISO3 code from the documented list.
+    """
+    if not country_code.strip():
+        return {"error": "country_code must not be empty"}
+    if country_code not in PER_GLOBAL_INFO_COUNTRIES:
+        valid_types = sorted(PER_GLOBAL_INFO_COUNTRIES)
+        return {
+            "error": f"Unknown country_code '{country_code}'. Valid codes: {', '.join(valid_types)}",
+            "valid_types": valid_types,
+        }
+    return upsert_ec_entity(
+        f"PerGlobalInfo{country_code}",
+        {"person_id_external": person_id_external, "start_date": start_date, "country": country_code},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )

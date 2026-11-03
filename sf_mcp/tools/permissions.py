@@ -6,6 +6,7 @@ from sf_mcp.client import make_odata_request
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
 from sf_mcp.server import mcp
+from sf_mcp.tools.ec_upsert import upsert_ec_entity
 from sf_mcp.validation import sanitize_odata_string
 
 
@@ -454,3 +455,99 @@ def get_dynamic_groups(
 
     groups = result.get("d", {}).get("results", [])
     return {"groups": groups, "count": len(groups)}
+
+
+@mcp.tool()
+@sf_tool("upsert_rbp_role")
+def upsert_rbp_role(
+    instance: str,
+    role_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one RBPRole record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Permission writes are high-impact; use dry_run first.
+    """
+    return upsert_ec_entity(
+        "RBPRole",
+        {"role_id": role_id},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_rbp_rule")
+def upsert_rbp_rule(
+    instance: str,
+    rule_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one RBPRule record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Permission writes are high-impact; use dry_run first.
+    """
+    return upsert_ec_entity(
+        "RBPRule",
+        {"rule_id": rule_id},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )
+
+
+@mcp.tool()
+@sf_tool("upsert_dynamic_group")
+def upsert_dynamic_group(
+    instance: str,
+    group_id: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one DynamicGroup record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+
+    Permission writes are high-impact; use dry_run first.
+    """
+    return upsert_ec_entity(
+        "DynamicGroup",
+        {"group_id": group_id},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )

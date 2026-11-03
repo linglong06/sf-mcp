@@ -7,6 +7,7 @@ from sf_mcp.client import make_odata_request
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
 from sf_mcp.server import mcp
+from sf_mcp.tools.ec_upsert import upsert_ec_entity
 from sf_mcp.validation import sanitize_odata_string
 
 
@@ -431,3 +432,34 @@ def get_org_chart(
         "total_positions": total_positions,
         "total_api_calls": total_api_calls,
     }
+
+
+@mcp.tool()
+@sf_tool("upsert_position")
+def upsert_position(
+    instance: str,
+    code: str,
+    effective_start_date: str,
+    data_center: str,
+    environment: str,
+    auth_user_id: str,
+    auth_password: str,
+    fields: dict[str, Any] | None = None,
+    dry_run: bool = True,
+    *,
+    request_id: str = RequestId(),
+    start_time: float = StartTime(),
+    api_host: str = ApiHost(),
+) -> dict[str, Any]:
+    """Upsert one Position record; defaults to a dry-run preview.
+
+    Supply additional tenant properties through fields. Required keys and metadata
+    override fields. Dates pass through unchanged. Real writes require
+    dry_run=False and SF_ALLOW_WRITE=true; there is no environment whitelist.
+    """
+    return upsert_ec_entity(
+        "Position",
+        {"code": code, "effective_start_date": effective_start_date},
+        instance, data_center, environment, auth_user_id, auth_password,
+        fields, dry_run, request_id,
+    )

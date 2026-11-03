@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- M2 Background writes: one `upsert_background_element` tool for 24 profile portlet
+  types, with metadata key rules, default dry-run, shared upsert controls, and tests.
+
+- M2 expanded scope: 14 upsert tools for compensation, Position, work permits,
+  termination, higher duty, User, time off, RBP/groups, and country-specific
+  GlobalInfo. Reuses M0 gating and dry-run previews; adds explicit country lists,
+  shared aliases, high-impact write guidance, and mocked regression tests.
+
+- M2.1/M2.2: nine EC employee/person upsert tools with shared key/alias handling,
+  default dry-run previews, M0 write gating, mocked tests, and
+  `docs/M2_EC_EMPLOYEE_WRITE.md`.
+
+- M0 write infrastructure: disabled-by-default `SF_ALLOW_WRITE`, reusable write guard,
+  generic OData mutations with dry-run previews, mutation auditing, and cache invalidation.
+  No environment whitelist is imposed.
+- M1 EC configuration tools: `upsert_foundation_object` and `upsert_picklist_value`,
+  with default dry-run previews, M0 write gating, shared foundation mappings,
+  localized picklist fields, mocked tests, and endpoint behavior documented in
+  `docs/M1_EC_CONFIG_WRITE.md`.
+
+### Changed
+
+- M1 foundation-object and picklist-value writes now POST to SAP
+  `/odata/v2/upsert?purgeType=incremental` with a one-entity JSON array.
+
 ## [0.3.2] - 2026-03-02
 
 ### Fixed

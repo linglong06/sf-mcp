@@ -3,6 +3,11 @@
 import os
 
 
+def writes_allowed() -> bool:
+    """Read the write opt-in at call time; unset or unrecognized values disable writes."""
+    return os.environ.get("SF_ALLOW_WRITE", "false").strip().lower() == "true"
+
+
 def _env_int(name: str, default: int) -> int:
     """Read an integer from an environment variable, falling back to default."""
     val = os.environ.get(name)
