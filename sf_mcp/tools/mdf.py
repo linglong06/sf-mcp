@@ -5,6 +5,7 @@ from typing import Any
 from sf_mcp.client import make_metadata_request, make_odata_mutation, make_odata_request, make_service_doc_request
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
+from sf_mcp.metadata_parse import MetadataExtractionError, extract_entity_fields
 from sf_mcp.server import mcp
 from sf_mcp.validation import sanitize_odata_string
 
@@ -28,7 +29,10 @@ def get_mdf_object_definitions(
 
     Discovers MDF/generic objects (prefixed with 'cust_') in the system.
     When an object_name is provided, returns detailed field definitions
-    including types, nullability, and max lengths.
+    including types, nullability, max lengths, and source-limited required analysis.
+    This reads OData metadata, not Configure Object Definition. Object-definition
+    required settings are unsupported by this tooling; UI/rule requirements are
+    unknown. Scalar and navigation annotations are reported independently.
 
     Args:
         instance: The SuccessFactors instance/company ID
@@ -36,7 +40,7 @@ def get_mdf_object_definitions(
         environment: Environment type ('preview', 'production', 'sales_demo')
         auth_user_id: SuccessFactors user ID for authentication (required)
         auth_password: SuccessFactors password for authentication (required)
-        object_name: Specific MDF object to inspect (e.g., 'cust_myObject'). If empty, lists all.
+        object_name: Specific MDF object to inspect (e.g., 'Position', 'cust_myObject'). If empty, lists cust_ objects.
     """
     if object_name:
         # Fetch metadata for a specific MDF object
@@ -53,16 +57,23 @@ def get_mdf_object_definitions(
 
         if metadata is None:
             return {
-                "error": f"MDF object '{object_name}' not found",
-                "message": "Check the object name. MDF objects typically start with 'cust_'.",
+                "status": "error",
+                "error": "metadata_unavailable",
+                "message": f"Failed to fetch metadata for MDF object '{object_name}'.",
             }
-        if "error" in metadata:
-            return metadata
+        if isinstance(metadata, dict) and "error" in metadata:
+            return {**metadata, "status": "error"}
 
-        fields = _extract_mdf_fields(metadata)
+        try:
+            fields = _extract_mdf_fields(metadata, object_name)
+        except MetadataExtractionError as exc:
+            return {"object_name": object_name, **exc.as_dict()}
         return {
+            "status": "success",
             "object_name": object_name,
             "field_count": len(fields),
+            "property_count": sum(f["kind"] == "Property" for f in fields),
+            "navigation_property_count": sum(f["kind"] == "NavigationProperty" for f in fields),
             "fields": fields,
         }
 
@@ -90,64 +101,12 @@ def get_mdf_object_definitions(
     }
 
 
-def _extract_mdf_fields(metadata: dict) -> list[dict]:
-    """Extract field definitions from OData metadata for an MDF object."""
-    fields: list[dict] = []
-    try:
-        if "edmx:Edmx" in metadata:
-            data_services = metadata["edmx:Edmx"].get("edmx:DataServices", {})
-        elif "Edmx" in metadata:
-            data_services = metadata["Edmx"].get("DataServices", {})
-        else:
-            return fields
-
-        schema = data_services.get("Schema", {})
-        if isinstance(schema, list):
-            schema = schema[0] if schema else {}
-
-        entity_types = schema.get("EntityType", [])
-        if not isinstance(entity_types, list):
-            entity_types = [entity_types]
-
-        for et in entity_types:
-            if not et or not isinstance(et, dict):
-                continue
-            props = et.get("Property", [])
-            if not isinstance(props, list):
-                props = [props]
-            for prop in props:
-                if not prop or not isinstance(prop, dict):
-                    continue
-                name = prop.get("@Name", "")
-                if name:
-                    field_info: dict[str, Any] = {
-                        "name": name,
-                        "type": prop.get("@Type", "unknown"),
-                        "nullable": prop.get("@Nullable", "true"),
-                    }
-                    if prop.get("@MaxLength"):
-                        field_info["max_length"] = prop["@MaxLength"]
-                    fields.append(field_info)
-
-        # Extract navigation properties
-        for et in entity_types:
-            if not et or not isinstance(et, dict):
-                continue
-            nav_props = et.get("NavigationProperty", [])
-            if not isinstance(nav_props, list):
-                nav_props = [nav_props]
-            for nav in nav_props:
-                if not nav or not isinstance(nav, dict):
-                    continue
-                name = nav.get("@Name", "")
-                if name:
-                    fields.append({
-                        "name": name,
-                        "type": "NavigationProperty",
-                        "relationship": nav.get("@Relationship", ""),
-                    })
-    except (KeyError, TypeError, AttributeError):
-        pass
+def _extract_mdf_fields(metadata: dict, object_name: str) -> list[dict]:
+    """Use the shared entity-scoped parser, retaining MDF's list and max_length alias."""
+    fields = list(extract_entity_fields(metadata, object_name).values())
+    for field in fields:
+        if field["maxLength"] is not None:
+            field["max_length"] = field["maxLength"]
     return fields
 
 

@@ -8,46 +8,14 @@ from sf_mcp.client import make_metadata_request, make_service_doc_request
 from sf_mcp.decorators import sf_tool
 from sf_mcp.dependencies import ApiHost, RequestId, StartTime
 from sf_mcp.logging_config import audit_log
+from sf_mcp.metadata_parse import MetadataExtractionError, extract_entity_fields
 from sf_mcp.server import mcp
 from sf_mcp.validation import validate_identifier
 
 
-def _extract_entity_fields(metadata: dict) -> dict[str, dict]:
-    """Extract field information from OData metadata."""
-    fields = {}
-    try:
-        if "edmx:Edmx" in metadata:
-            data_services = metadata["edmx:Edmx"].get("edmx:DataServices", {})
-        elif "Edmx" in metadata:
-            data_services = metadata["Edmx"].get("DataServices", {})
-        else:
-            return fields
-
-        schema = data_services.get("Schema", {})
-        if isinstance(schema, list):
-            schema = schema[0] if schema else {}
-
-        entity_types = schema.get("EntityType", [])
-        if not isinstance(entity_types, list):
-            entity_types = [entity_types]
-
-        for et in entity_types:
-            if et and isinstance(et, dict):
-                props = et.get("Property", [])
-                if not isinstance(props, list):
-                    props = [props]
-                for prop in props:
-                    if prop and isinstance(prop, dict):
-                        name = prop.get("@Name", "")
-                        if name:
-                            fields[name] = {
-                                "type": prop.get("@Type", "unknown"),
-                                "nullable": prop.get("@Nullable", "true"),
-                                "maxLength": prop.get("@MaxLength", ""),
-                            }
-    except (KeyError, TypeError, AttributeError):
-        pass
-    return fields
+def _extract_entity_fields(metadata: dict, entity: str) -> dict[str, dict]:
+    """Extract only the requested entity, including separately typed navigation fields."""
+    return extract_entity_fields(metadata, entity)
 
 
 def _categorize_entities(entities: list[str]) -> dict[str, list[str]]:
@@ -92,7 +60,9 @@ def get_configuration(
     Retrieve OData entity metadata/configuration from a SuccessFactors instance.
 
     This tool fetches the $metadata document for a specific entity, showing
-    all available fields, their types, and constraints.
+    all available scalar/navigation fields, types, and OData required annotations.
+    Required analysis separates api_odata, object_definition (unsupported by this
+    tooling), and ui_or_rule (unknown). OData optional does not mean UI optional.
 
     Args:
         instance: The SuccessFactors instance/company ID
@@ -116,16 +86,23 @@ def get_configuration(
     )
 
     if metadata is None:
-        return {"error": f"Failed to fetch metadata for entity '{entity}'"}
-    if "error" in metadata:
-        return metadata
+        return {"status": "error", "error": "metadata_unavailable",
+                "message": f"Failed to fetch metadata for entity '{entity}'"}
+    if isinstance(metadata, dict) and "error" in metadata:
+        return {**metadata, "status": "error"}
 
-    fields = _extract_entity_fields(metadata)
+    try:
+        fields = _extract_entity_fields(metadata, entity)
+    except MetadataExtractionError as exc:
+        return {"entity": entity, "instance": instance, **exc.as_dict()}
 
     return {
+        "status": "success",
         "entity": entity,
         "instance": instance,
         "field_count": len(fields),
+        "property_count": sum(f["kind"] == "Property" for f in fields.values()),
+        "navigation_property_count": sum(f["kind"] == "NavigationProperty" for f in fields.values()),
         "fields": fields,
     }
 
@@ -214,8 +191,11 @@ def compare_configurations(
     if metadata2 is None or (isinstance(metadata2, dict) and "error" in metadata2):
         return {"error": f"Failed to fetch metadata from instance2 ({instance2})"}
 
-    fields1 = _extract_entity_fields(metadata1)
-    fields2 = _extract_entity_fields(metadata2)
+    try:
+        fields1 = _extract_entity_fields(metadata1, entity)
+        fields2 = _extract_entity_fields(metadata2, entity)
+    except MetadataExtractionError as exc:
+        return {"entity": entity, **exc.as_dict()}
 
     fields1_names = set(fields1.keys())
     fields2_names = set(fields2.keys())
