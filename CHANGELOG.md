@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Workforce SCIM `get_scim_user` and `create_scim_user`: bounded exact lookup,
+  sanitized summaries, default payload previews, explicit tenant provisioning
+  confirmation, write guard, duplicate checks, and no automatic POST retries.
+  See [Workforce SCIM Users](docs/WORKFORCE_SCIM_USERS.md) for SAP's hire-flow
+  requirements and IAS/IPS cautions. Covered by mock tests; no tenant verification.
+
 - M2 Background writes: one `upsert_background_element` tool for 24 profile portlet
   types, with metadata key rules, default dry-run, shared upsert controls, and tests.
 

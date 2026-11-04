@@ -1559,6 +1559,9 @@ def upsert_user(
 
     Large surface (login/HRIS hybrid): prefer Per*/Emp* for person/job data.
     The caller owns field choice; review with dry_run first.
+    This OData User upsert does not prove a login account exists. See
+    get_scim_user/create_scim_user and docs/WORKFORCE_SCIM_USERS.md; confirm
+    the tenant's IAS/IPS provisioning model before any SCIM account creation.
     """
     return upsert_ec_entity(
         "User",

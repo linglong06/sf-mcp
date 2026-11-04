@@ -3,6 +3,13 @@
 Twenty-four transactional tools use the existing M0 mutation client. Existing
 GET tools and M1 foundation-object/picklist tools are unchanged.
 
+A login account is not the same as an OData `User` row or a successful
+`upsert_user`. `EmpEmployment` creates the corresponding OData User entity.
+Follow PerPerson → EmpEmployment → EmpJob → PerPersonal; do not default to
+OData User first. See [Workforce SCIM Users](WORKFORCE_SCIM_USERS.md) for
+`get_scim_user` / `create_scim_user`, the SCIM step after EmpEmployment, and the
+required tenant IAS/IPS provisioning-model confirmation before a real create.
+
 ## Tools and required business keys
 
 | Tool | Entity | Required arguments → payload properties |

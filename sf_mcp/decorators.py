@@ -15,6 +15,7 @@ def sf_tool(
     tool_name: str,
     validate: dict[str, str] | None = None,
     max_top: int | None = None,
+    log_parameters: bool = True,
 ):
     """
     Decorator that wraps an MCP tool function with standard boilerplate.
@@ -37,6 +38,7 @@ def sf_tool(
         tool_name: Name for audit logging
         validate: Optional dict mapping param_name -> validator_name for additional validation
         max_top: Optional maximum value for a `top` parameter
+        log_parameters: Set False for tools handling sensitive structured inputs.
     """
 
     def decorator(fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
@@ -52,7 +54,10 @@ def sf_tool(
                 kwargs["top"] = max(1, min(top, max_top))
 
             # Build safe details for logging (mask password)
-            log_details = {k: v for k, v in kwargs.items() if k not in ("auth_password",)}
+            log_details = (
+                {k: v for k, v in kwargs.items() if k not in ("auth_password",)}
+                if log_parameters else {}
+            )
 
             # Log start
             audit_log(
@@ -100,16 +105,17 @@ def sf_tool(
             try:
                 result = fn(*args, **kwargs)
             except Exception as e:
+                error = str(e) if log_parameters else "Tool execution failed; sensitive details omitted."
                 audit_log(
                     event_type="tool_invocation",
                     tool_name=tool_name,
                     instance=instance,
                     status="error",
-                    details={"error": str(e)},
+                    details={"error": error},
                     request_id=request_id,
                     duration_ms=(time.time() - start_time_val) * 1000,
                 )
-                return {"error": f"Internal error: {str(e)}"}
+                return {"error": f"Internal error: {error}"}
 
             # Log success or error based on result
             if isinstance(result, dict) and "error" in result:

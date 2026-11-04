@@ -16,4 +16,5 @@ from sf_mcp.tools import (  # noqa: F401
     talent,
     time_off,
     workflow,
+    workforce_scim_users,
 )
