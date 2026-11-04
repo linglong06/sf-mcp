@@ -1,11 +1,11 @@
 [project]
 name = "sf-mcp"
 version = "0.3.2"
-description = "SAP SuccessFactors MCP server with 43 HR tools for Claude Desktop and Cloud Run"
+description = "SAP SuccessFactors MCP server: OData + Workforce SCIM, 90 tools (read/write with dry-run guards) for Claude Desktop and Cloud Run"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
-keywords = ["mcp", "sap", "successfactors", "hr", "odata", "claude", "ai"]
+keywords = ["mcp", "sap", "successfactors", "hr", "odata", "scim", "fastmcp", "claude", "ai"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -26,9 +26,9 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/aiadiguru2025/sf-mcp"
-Issues = "https://github.com/aiadiguru2025/sf-mcp/issues"
-Changelog = "https://github.com/aiadiguru2025/sf-mcp/blob/main/CHANGELOG.md"
+Repository = "https://github.com/linglong06/sf-mcp"
+Issues = "https://github.com/linglong06/sf-mcp/issues"
+Changelog = "https://github.com/linglong06/sf-mcp/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

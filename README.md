@@ -6,14 +6,14 @@
   <p align="center">
     <a href="#installation">Installation</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
-    <a href="#tools">62 Tools</a> &middot;
+    <a href="#tools">90 Tools</a> &middot;
     <a href="#deployment">Deployment</a> &middot;
     <a href="#api-reference">API Reference</a>
   </p>
 </p>
 
 <p align="center">
-  <a href="https://github.com/aiadiguru2025/sf-mcp/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-blue.svg" /></a>
+  <a href="https://github.com/linglong06/sf-mcp/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-blue.svg" /></a>
   <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue.svg" /></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" /></a>
   <a href="https://modelcontextprotocol.io"><img alt="MCP" src="https://img.shields.io/badge/MCP-compatible-purple.svg" /></a>
@@ -21,7 +21,9 @@
 
 ---
 
-A production-grade [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude (or any MCP client) to **SAP SuccessFactors** via OData APIs. Query employee data, manage permissions, run compliance reports, and administer HR operations — all through natural language.
+A production-grade [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude (or any MCP client) to **SAP SuccessFactors** via OData APIs and Workforce SCIM. Query employee data, manage permissions, run compliance reports, preview or apply guarded EC upserts, and administer HR operations — all through natural language.
+
+> **Version note:** PyPI/package version remains **0.3.2**. OData write tools and Workforce SCIM are on `main` under [Unreleased](CHANGELOG.md); they are not yet cut as a numbered release.
 
 ```
 You: "Who on the Engineering team has a work anniversary this month?"
@@ -36,15 +38,15 @@ Claude: [calls get_anniversary_employees] Found 3 upcoming anniversaries...
 
 | Challenge | SF-MCP Solution |
 |-----------|-----------------|
-| SAP SuccessFactors APIs are complex and verbose | **62 purpose-built tools** with clean interfaces |
+| SAP SuccessFactors APIs are complex and verbose | **90 purpose-built tools** with clean interfaces |
 | Building OData queries requires deep SF knowledge | **Natural language** — ask Claude in plain English |
-| Security concerns with API access | **Per-request auth**, input validation, audit logging |
+| Security concerns with API access | **Per-request auth**, input validation, audit logging, **write guards** (`SF_ALLOW_WRITE` + dry-run) |
 | Managing multiple SF instances | **21 data centers** supported, cross-instance comparison |
 | API rate limits and performance | **Connection pooling**, response caching, rate limiting |
 
 ## Tools
 
-62 tools organized across 16 categories:
+90 tools organized across 18 categories (62 read + 26 OData upsert + 2 Workforce SCIM):
 
 <details>
 <summary><strong>Configuration & Discovery</strong> (3 tools)</summary>
@@ -236,7 +238,71 @@ Claude: [calls get_anniversary_employees] Found 3 upcoming anniversaries...
 
 </details>
 
+<details>
+<summary><strong>EC / OData Upserts</strong> (26 tools)</summary>
+
+Guarded writes via `POST /odata/v2/upsert` (default `dry_run=true`). Real mutations require `SF_ALLOW_WRITE=true` and `dry_run=false`. See [Writes & safety](#writes--safety).
+
+| Tool | Description |
+|------|-------------|
+| `upsert_foundation_object` | Foundation objects (FODepartment, FOCostCenter, …) |
+| `upsert_picklist_value` | PickListValueV2 localized values |
+| `upsert_emp_job` | EmpJob |
+| `upsert_emp_employment` | EmpEmployment |
+| `upsert_emp_job_relationship` | EmpJobRelationships |
+| `upsert_per_person` | PerPerson |
+| `upsert_per_personal` | PerPersonal |
+| `upsert_per_email` | PerEmail |
+| `upsert_per_phone` | PerPhone |
+| `upsert_per_address` | PerAddressDEFLT |
+| `upsert_per_national_id` | PerNationalId |
+| `upsert_emp_compensation` | EmpCompensation |
+| `upsert_emp_pay_comp_recurring` | EmpPayCompRecurring |
+| `upsert_emp_pay_comp_non_recurring` | EmpPayCompNonRecurring |
+| `upsert_emp_work_permit` | EmpWorkPermit |
+| `upsert_emp_employment_termination` | EmpEmploymentTermination |
+| `upsert_emp_employment_higher_duty` | EmpEmploymentHigherDuty |
+| `upsert_user` | OData User (login identity is SCIM — see below) |
+| `upsert_per_global_info` | Country-specific PerGlobalInfo{ISO3} |
+| `upsert_background_element` | Background profile portlets (24 types) |
+| `upsert_position` | Position |
+| `upsert_employee_time` | EmployeeTime |
+| `upsert_employee_time_country` | EmployeeTime{ISO3} |
+| `upsert_rbp_role` | RBPRole |
+| `upsert_rbp_rule` | RBPRule |
+| `upsert_dynamic_group` | DynamicGroup |
+
+Docs: [M0 write infra](docs/M0_WRITE_INFRA.md), [M1 EC config](docs/M1_EC_CONFIG_WRITE.md), [M2 EC employee](docs/M2_EC_EMPLOYEE_WRITE.md), [metadata fields](docs/METADATA_FIELD_EXTRACTION.md).
+
+</details>
+
+<details>
+<summary><strong>Workforce SCIM</strong> (2 tools)</summary>
+
+Login-account APIs at `/rest/iam/scim/v2/Users`. EmpEmployment / OData `User` ≠ a SCIM login account. Prefer IAS/IPS when that is the tenant provisioning path; explicit SCIM create requires `provisioning_model_confirmed=true` plus write guards. See [Workforce SCIM Users](docs/WORKFORCE_SCIM_USERS.md).
+
+| Tool | Description |
+|------|-------------|
+| `get_scim_user` | Exact lookup by `user_name` **or** `person_id_external` |
+| `create_scim_user` | Preview (default) or POST a SCIM login account after EmpEmployment |
+
+</details>
+
+## Writes & safety
+
+OData upsert and SCIM create tools are **preview-first**:
+
+| Control | Behavior |
+|---------|----------|
+| `SF_ALLOW_WRITE` | Server env; defaults to `false`. Real mutations refused until set `true`. |
+| `dry_run` | Tool parameter; defaults to `true` and returns method/URL/payload preview. |
+| Audit | Mutations are audited; credentials stay masked in logs. |
+| Environment whitelist | **None** — callers choose instance/DC/environment per request. |
+
+A live write needs **both** `SF_ALLOW_WRITE=true` and `dry_run=false`. SCIM create additionally requires `provisioning_model_confirmed=true` (caller attestation, not auto-discovery). Details: [docs/M0_WRITE_INFRA.md](docs/M0_WRITE_INFRA.md), [docs/WORKFORCE_SCIM_USERS.md](docs/WORKFORCE_SCIM_USERS.md).
+
 ## Installation
+
 
 ### Prerequisites
 
@@ -247,7 +313,7 @@ Claude: [calls get_anniversary_employees] Found 3 upcoming anniversaries...
 ### Setup
 
 ```bash
-git clone https://github.com/aiadiguru2025/sf-mcp.git
+git clone https://github.com/linglong06/sf-mcp.git
 cd sf-mcp
 uv sync
 ```
@@ -303,7 +369,7 @@ Add the sf-mcp server:
 
 ### Step 3 — Restart Claude Desktop
 
-The MCP tools icon (hammer) will appear in the input area with all 62 tools available.
+The MCP tools icon (hammer) will appear in the input area with all 90 tools available.
 
 > **Note:** Credentials (`auth_user_id` and `auth_password`) are provided on each tool call — nothing is stored in the config.
 
@@ -381,6 +447,12 @@ All tool parameters (`data_center`, `environment`, `auth_user_id`, `auth_passwor
 |----------|---------|-------------|
 | `MCP_API_KEY` | *(none)* | API key for HTTP endpoint auth |
 
+### Write guards
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SF_ALLOW_WRITE` | `false` | Allow real OData upsert / SCIM create when tools also pass `dry_run=false` |
+
 Copy `.env.example` to `.env` to customize:
 ```bash
 cp .env.example .env
@@ -419,9 +491,11 @@ sf-mcp/
 ├── main.py                     # Entry point (stdio + HTTP modes)
 ├── sf_mcp/
 │   ├── server.py               # FastMCP instance
-│   ├── config.py               # DC mappings, constants, env vars
+│   ├── config.py               # DC mappings, constants, env vars (incl. SF_ALLOW_WRITE)
 │   ├── auth.py                 # Credential resolution, API key middleware
 │   ├── client.py               # HTTP client (OData, metadata, service doc, pagination)
+│   ├── scim.py                 # Workforce SCIM client helpers
+│   ├── metadata_parse.py       # Dual-schema metadata field extraction
 │   ├── cache.py                # TTL-based response cache with deep-copy safety
 │   ├── rate_limiter.py         # Sliding-window rate limiter (per-instance)
 │   ├── validation.py           # 10 input validators with registry pattern
@@ -429,22 +503,27 @@ sf-mcp/
 │   ├── dependencies.py         # FastMCP DI for schema exclusion
 │   ├── logging_config.py       # Cloud Logging JSON formatter, audit_log()
 │   ├── xml_utils.py            # Safe XML parsing (defusedxml), SAP date parsing
-│   └── tools/                  # 62 tools across 16 modules
+│   └── tools/                  # 90 tools across 17 modules
 │       ├── configuration.py    # get_configuration, compare_configurations, list_entities
-│       ├── permissions.py      # 7 RBP security tools
-│       ├── audit.py            # Role history, role assignment history
-│       ├── query.py            # query_odata, get_picklist_values
-│       ├── employee.py         # Profile, search, history, team roster
-│       ├── time_off.py         # Balances, upcoming absences, requests
+│       ├── permissions.py      # RBP reads + upsert_rbp_role/rule, upsert_dynamic_group
+│       ├── audit.py            # Role history, login/admin audit, SoD, dormant users
+│       ├── query.py            # query_odata, get_picklist_values, upsert_picklist_value
+│       ├── employee.py         # Reads + Emp*/Per*/comp/User/GlobalInfo/background upserts
+│       ├── time_off.py         # Balances, requests, EmployeeTime upserts
 │       ├── recruiting.py       # Requisitions, pipeline, new hires
 │       ├── compliance.py       # Terminations, missing data, anniversaries, reviews, comp
-│       ├── position.py         # Position details, vacancies, org chart
+│       ├── talent.py           # Goals, development, talent flags, succession
+│       ├── position.py         # Position details, vacancies, org chart, upsert_position
 │       ├── workflow.py         # Pending approvals, workflow history
-│       ├── mdf.py              # MDF object definitions, queries, foundation objects
+│       ├── mdf.py              # MDF defs/query, foundation objects + upsert
 │       ├── monitoring.py       # Alerts, scheduled jobs, integration jobs
+│       ├── data_management.py  # Bulk export, picklist usage, country fields
 │       ├── admin.py            # Rate limit quota, cache status, cache clear
+│       ├── workforce_scim_users.py  # get_scim_user, create_scim_user
+│       ├── ec_upsert.py        # Shared OData upsert / dry-run helpers
 │       └── utils.py            # Shared utilities (display_name)
-├── tests/                      # 110 tests
+├── docs/                       # Write infra, EC upsert, SCIM, metadata notes
+├── tests/                      # 465 tests
 ├── Dockerfile                  # Cloud Run container
 ├── .env.example                # Configuration template
 └── pyproject.toml              # Project metadata, dependencies, linter config
@@ -454,7 +533,7 @@ sf-mcp/
 
 **Zero boilerplate** — The `sf_tool` decorator handles request ID generation, timing, audit logging, input validation, credential checking, error handling, and `$top` clamping. Tool functions contain only business logic.
 
-**Secure by default** — 10 input validators (regex allowlists), OData injection prevention, XXE-safe XML parsing (defusedxml), timing-safe API key comparison (hmac.compare_digest), and automatic credential masking in logs.
+**Secure by default** — 10 input validators (regex allowlists), OData injection prevention, XXE-safe XML parsing (defusedxml), timing-safe API key comparison (hmac.compare_digest), automatic credential masking in logs, and write tools gated by `SF_ALLOW_WRITE` with dry-run previews.
 
 **Production-ready** — Connection pooling (requests.Session), mutation-safe response caching (deep-copy on put/get), sliding-window rate limiting with automatic 429 retry, and Cloud Logging-compatible JSON audit trail.
 
@@ -471,11 +550,12 @@ sf-mcp/
 | **Audit logging** | Every tool call logged with structured JSON; passwords automatically masked |
 | **Cache safety** | Deep-copied on store and retrieval to prevent mutation bugs |
 | **Date handling** | All SAP timestamp parsing uses explicit UTC to prevent timezone inconsistencies |
+| **Write gating** | `SF_ALLOW_WRITE` off by default; tools default to `dry_run`; SCIM create needs explicit provisioning confirmation |
 
 ## Testing
 
 ```bash
-# Run all 110 tests
+# Run all 465 tests
 uv run pytest tests/ -v
 
 # Run with coverage
@@ -496,6 +576,8 @@ Test coverage includes:
 - **Cache** — Put/get, TTL expiry, category TTLs, invalidation, eviction, deep-copy safety
 - **Pagination** — Single/multi page, max_pages limit, error handling, $skip increments
 - **Decorators** — Value injection, validation errors, max_top clamping, exception handling
+- **EC upsert / write guards** — dry-run previews, `SF_ALLOW_WRITE` gating, upsert payload shape
+- **Workforce SCIM** — lookup/create preflight, no blind POST retries, sanitized summaries
 
 ## API Reference
 
