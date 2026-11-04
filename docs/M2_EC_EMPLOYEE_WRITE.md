@@ -52,8 +52,7 @@ Country codes must exactly match an uppercase ISO3 code below. Unknown codes
 return an error listing valid codes and a sorted `valid_types` list; empty codes
 are rejected. `country_code` is a selector, not a payload property.
 
-`upsert_per_global_info` supports these 53 codes from the supplied hisensehonT2
-scope, through one generic tool:
+`upsert_per_global_info` supports these 53 codes through one generic tool:
 
 ```text
 ARE ARG AUS AUT BEL BGD BRA CAN CHE CHL CHN COL CZE DEU DNK EGY ESP FIN
@@ -93,7 +92,7 @@ Empty or whitespace-only required key strings return an error before mutation.
 
 One generic `upsert_background_element` tool in `employee.py` selects
 `Background_{Type}` using `background_type`. An optional `Background_` prefix
-is removed; type names otherwise match exactly. Supported hisensehonT2 types:
+is removed; type names otherwise match exactly. Supported types:
 
 ```text
 Awards Benefitselection Community Compensation Courses Documents Education
@@ -152,7 +151,7 @@ no implicit date conversion, date selection, or event-reason selection.
 - Results are returned unchanged from M0: preview, SF response, or structured error.
   M0 handles mutation auditing and instance-cache invalidation.
 
-The supplied metadata verification baseline is **hisensehonT2 preview**:
+The supplied metadata verification baseline is a preview instance:
 property-level `sap:upsertable` metadata was verified for the scoped entities.
 This is metadata verification, not a successful live-write test, and was not
 repeated by the mocked tests in this change. Still confirm business keys,

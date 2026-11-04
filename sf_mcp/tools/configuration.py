@@ -299,7 +299,16 @@ def list_entities(
     if "error" in data:
         return data
 
-    entities = sorted(data.get("d", {}).get("EntitySets", []))
+    # SuccessFactors deployments return either the OData V2 verbose envelope
+    # or a top-level service document. Do not silently claim zero entities when
+    # a server returns an unexpected representation.
+    container = data.get("d", data)
+    if not isinstance(container, dict) or not isinstance(container.get("EntitySets"), list):
+        return {"error": "invalid_service_document", "message": "EntitySets list missing from service document"}
+    raw_entities = container["EntitySets"]
+    if not all(isinstance(item, str) for item in raw_entities):
+        return {"error": "invalid_service_document", "message": "EntitySets must contain entity names"}
+    entities = sorted(set(raw_entities))
 
     categories_dict = _categorize_entities(entities)
 
@@ -309,6 +318,9 @@ def list_entities(
         filtered_entities = entities
 
     response_data = {
+        "instance": instance,
+        "data_center": data_center,
+        "environment": environment,
         "entities": filtered_entities,
         "count": len(filtered_entities),
         "total_available": len(entities),
@@ -318,3 +330,51 @@ def list_entities(
         response_data["by_category"] = {k: len(v) for k, v in categories_dict.items()}
 
     return response_data
+
+
+@mcp.tool()
+@sf_tool("get_entity_catalog", max_top=50)
+def get_entity_catalog(instance: str, data_center: str, environment: str, auth_user_id: str,
+                       auth_password: str, category: str = "all", skip: int = 0, top: int = 20, *,
+                       request_id: str = RequestId(), start_time: float = StartTime(),
+                       api_host: str = ApiHost()) -> dict[str, Any]:
+    """Build a paged tenant-specific entity inventory from service document and metadata.
+
+    Field upsert annotations describe metadata only, not actual permission or UI rules.
+    Categories use name heuristics and do not prove an entity belongs to EC.
+    """
+    if skip < 0 or top < 1:
+        return {"error": "skip must be nonnegative and top must be positive"}
+    service = make_service_doc_request(instance, data_center, environment, auth_user_id, auth_password, request_id)
+    if "error" in service:
+        return service
+    container = service.get("d", service)
+    if not isinstance(container, dict) or not isinstance(container.get("EntitySets"), list):
+        return {"error": "invalid_service_document", "message": "EntitySets list missing from service document"}
+    entities = container["EntitySets"]
+    if not all(isinstance(x, str) for x in entities):
+        return {"error": "invalid_service_document", "message": "EntitySets must contain entity names"}
+    entities = sorted(set(entities))
+    groups = _categorize_entities(entities)
+    if category != "all":
+        if category not in groups:
+            return {"error": "Unknown category", "valid_categories": ["all", *groups]}
+        entities = groups[category]
+    rows = []
+    for entity in entities[skip:skip + top]:
+        metadata = make_metadata_request(instance, entity, data_center, environment, auth_user_id, auth_password, request_id)
+        if not isinstance(metadata, dict) or "error" in metadata:
+            rows.append({"entity": entity, "metadata_status": "unavailable"})
+            continue
+        try:
+            fields = extract_entity_fields(metadata, entity)
+            properties = [x for x in fields.values() if x.get("kind") == "Property"]
+            rows.append({"entity": entity, "metadata_status": "available", "property_count": len(properties),
+                         "upsertable_property_count": sum(x.get("sap", {}).get("upsertable") == "true" for x in properties),
+                         "note": "Field annotations do not establish entity write support or user permission."})
+        except MetadataExtractionError as exc:
+            rows.append({"entity": entity, "metadata_status": "incomplete", "error": exc.as_dict()})
+    next_skip = skip + len(rows)
+    return {"instance": instance, "data_center": data_center, "environment": environment, "category": category,
+            "total": len(entities), "skip": skip, "results": rows,
+            "next_skip": next_skip if next_skip < len(entities) else None}

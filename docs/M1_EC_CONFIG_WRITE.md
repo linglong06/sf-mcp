@@ -24,8 +24,8 @@ function-import pattern for an `UpsertResult` collection. Each entity retains
 Explicit IDs and generated metadata override conflicting entries in `fields`.
 Inputs are copied, not modified.
 
-Endpoint availability was verified against `hisensehonT2` preview metadata
-(DC55): FunctionImport `upsert` is present with `POST` and
+Endpoint availability was verified against preview metadata:
+FunctionImport `upsert` is present with `POST` and
 `sap:support-payload=true`; FO* and `PickListValueV2` have
 `sap:upsertable=true` properties. This is metadata verification, not a live-write
 test. Still confirm business keys, required dates, and writable properties per
