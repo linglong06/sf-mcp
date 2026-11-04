@@ -1,6 +1,6 @@
 [project]
 name = "sf-mcp"
-version = "0.3.2"
+version = "0.4.0"
 description = "SAP SuccessFactors MCP server: OData + Workforce SCIM, 90 tools (read/write with dry-run guards) for Claude Desktop and Cloud Run"
 readme = "README.md"
 license = {text = "MIT"}

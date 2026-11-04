@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/linglong06/sf-mcp/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-blue.svg" /></a>
+  <a href="https://github.com/linglong06/sf-mcp/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.4.0-blue.svg" /></a>
   <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue.svg" /></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" /></a>
   <a href="https://modelcontextprotocol.io"><img alt="MCP" src="https://img.shields.io/badge/MCP-compatible-purple.svg" /></a>
@@ -23,7 +23,7 @@
 
 A production-grade [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude (or any MCP client) to **SAP SuccessFactors** via OData APIs and Workforce SCIM. Query employee data, manage permissions, run compliance reports, preview or apply guarded EC upserts, and administer HR operations — all through natural language.
 
-> **Version note:** PyPI/package version remains **0.3.2**. OData write tools and Workforce SCIM are on `main` under [Unreleased](CHANGELOG.md); they are not yet cut as a numbered release.
+> **v0.4.0:** Adds OData write tools (default dry-run / `SF_ALLOW_WRITE`) and Workforce SCIM user lookup/create. See [CHANGELOG](CHANGELOG.md).
 
 ```
 You: "Who on the Engineering team has a work anniversary this month?"

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-04
+
 ### Added
 
 - Workforce SCIM `get_scim_user` and `create_scim_user`: bounded exact lookup,
