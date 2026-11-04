@@ -1,5 +1,6 @@
 """SuccessFactors OData API client with audit logging, rate limiting, and caching."""
 
+import hashlib
 import threading
 import time
 import uuid
@@ -405,15 +406,18 @@ def make_metadata_request(
     except ValueError as e:
         return {"error": str(e)}
 
-    # Check cache (metadata is always cached)
-    cache_endpoint = f"/odata/v2/{entity}/$metadata"
-    cached = get_cache().get(instance, cache_endpoint, None, request_id=req_id)
-    if cached is not None:
-        return cached
-
     user_id, password = resolve_credentials(auth_user_id, auth_password)
     if not user_id or not password:
         return {"error": "Missing credentials. auth_user_id and auth_password parameters are required."}
+
+    # Metadata may vary by host and authorization context. Never allow a cached
+    # response obtained with another password/account to bypass authentication.
+    cache_endpoint = f"/odata/v2/{entity}/$metadata"
+    auth_digest = hashlib.sha256(f"{user_id}\0{password}".encode()).hexdigest()
+    cache_context = {"api_host": api_host, "auth_digest": auth_digest}
+    cached = get_cache().get(instance, cache_endpoint, cache_context, request_id=req_id)
+    if cached is not None:
+        return cached
 
     username = f"{user_id}@{instance}"
     url = f"https://{api_host}{cache_endpoint}"
@@ -463,7 +467,7 @@ def make_metadata_request(
             return {"error": "Empty response from API"}
 
         parsed = xml_to_dict(response.text.encode("UTF-8"))
-        get_cache().put(instance, cache_endpoint, None, parsed, category="metadata", request_id=req_id)
+        get_cache().put(instance, cache_endpoint, cache_context, parsed, category="metadata", request_id=req_id)
         return parsed
     except requests.exceptions.RequestException as e:
         return {"error": f"Request failed: {str(e)}"}
@@ -493,15 +497,17 @@ def make_service_doc_request(
     except ValueError as e:
         return {"error": str(e)}
 
-    # Check cache (service doc is always cached)
-    cache_endpoint = "/odata/v2/"
-    cached = get_cache().get(instance, cache_endpoint, None, request_id=req_id)
-    if cached is not None:
-        return cached
-
     user_id, password = resolve_credentials(auth_user_id, auth_password)
     if not user_id or not password:
         return {"error": "Missing credentials. auth_user_id and auth_password parameters are required."}
+
+    # Service discovery is tenant, host and credential scoped.
+    cache_endpoint = "/odata/v2/"
+    auth_digest = hashlib.sha256(f"{user_id}\0{password}".encode()).hexdigest()
+    cache_context = {"api_host": api_host, "auth_digest": auth_digest}
+    cached = get_cache().get(instance, cache_endpoint, cache_context, request_id=req_id)
+    if cached is not None:
+        return cached
 
     username = f"{user_id}@{instance}"
     url = f"https://{api_host}{cache_endpoint}"
@@ -540,7 +546,7 @@ def make_service_doc_request(
             return {"error": f"HTTP {response.status_code}", "message": response.text[:500]}
 
         data = response.json()
-        get_cache().put(instance, cache_endpoint, None, data, category="service_doc", request_id=req_id)
+        get_cache().put(instance, cache_endpoint, cache_context, data, category="service_doc", request_id=req_id)
         return data
     except requests.exceptions.RequestException as e:
         return {"error": f"Request failed: {str(e)}"}

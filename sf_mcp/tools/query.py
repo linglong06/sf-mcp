@@ -14,6 +14,7 @@ from sf_mcp.validation import (
     validate_odata_filter,
     validate_orderby,
     validate_select,
+    validate_date,
 )
 
 
@@ -34,6 +35,10 @@ def query_odata(
     skip: int = 0,
     paginate: bool = False,
     max_pages: int = DEFAULT_MAX_PAGES,
+    as_of_date: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    filter_parent_date: bool = False,
     *,
     request_id: str = RequestId(),
     start_time: float = StartTime(),
@@ -60,6 +65,10 @@ def query_odata(
         skip: Records to skip for pagination (default 0). Ignored when paginate=True.
         paginate: If True, automatically fetch all pages of results (default: False)
         max_pages: Maximum pages to fetch when paginate=True (default: 10, max: 50)
+        as_of_date: Effective date YYYY-MM-DD; mutually exclusive with date range.
+        from_date: Start of effective date range, YYYY-MM-DD.
+        to_date: End of effective date range, YYYY-MM-DD.
+        filter_parent_date: Apply date filtering to composite child records where supported.
     """
     # Additional validation for query parameters
     try:
@@ -72,10 +81,24 @@ def query_odata(
             validate_orderby(orderby, "orderby")
         if expand:
             validate_expand(expand, "expand")
+        if as_of_date and (from_date or to_date):
+            raise ValueError("as_of_date cannot be combined with from_date or to_date")
+        for name, value in (("as_of_date", as_of_date), ("from_date", from_date), ("to_date", to_date)):
+            if value:
+                validate_date(value, name)
+                if len(value) != 10:
+                    raise ValueError(f"Invalid {name}: expected YYYY-MM-DD")
+        if from_date and to_date and from_date > to_date:
+            raise ValueError("from_date must not be after to_date")
     except ValueError as e:
         return {"error": str(e)}
 
     params = {"$format": "json", "$top": str(top)}
+    for key, value in (("asOfDate", as_of_date), ("fromDate", from_date), ("toDate", to_date)):
+        if value:
+            params[key] = value
+    if filter_parent_date:
+        params["filterParentDate"] = "true"
     if select:
         params["$select"] = select
     if filter:

@@ -135,6 +135,8 @@ def query_mdf_object(
     skip: int = 0,
     orderby: str = "",
     effective_date: str = "",
+    from_date: str = "",
+    to_date: str = "",
     *,
     request_id: str = RequestId(),
     start_time: float = StartTime(),
@@ -159,7 +161,9 @@ def query_mdf_object(
         top: Maximum results (default: 100, max: 500)
         skip: Records to skip for pagination (default: 0)
         orderby: Sort order (e.g., 'lastModifiedDateTime desc')
-        effective_date: Filter by effective date (YYYY-MM-DD) for dated objects
+        effective_date: SAP asOfDate (YYYY-MM-DD), mutually exclusive with range.
+        from_date: Beginning of SAP effective date range (YYYY-MM-DD).
+        to_date: End of SAP effective date range (YYYY-MM-DD).
     """
     safe_name = sanitize_odata_string(object_name)
     endpoint = f"/odata/v2/{safe_name}"
@@ -177,16 +181,22 @@ def query_mdf_object(
         params["$skip"] = str(skip)
     if orderby:
         params["$orderby"] = orderby
-    if effective_date:
-        safe_date = sanitize_odata_string(effective_date)
-        if "$filter" in params:
-            params["$filter"] += (
-                f" and effectiveStartDate le datetime'{safe_date}T23:59:59'"
-            )
-        else:
-            params["$filter"] = (
-                f"effectiveStartDate le datetime'{safe_date}T23:59:59'"
-            )
+    from sf_mcp.validation import validate_date
+    if effective_date and (from_date or to_date):
+        return {"error": "effective_date cannot be combined with from_date or to_date"}
+    try:
+        for name, value in (("effective_date", effective_date), ("from_date", from_date), ("to_date", to_date)):
+            if value:
+                validate_date(value, name)
+                if len(value) != 10:
+                    raise ValueError(f"Invalid {name}: expected YYYY-MM-DD")
+        if from_date and to_date and from_date > to_date:
+            raise ValueError("from_date must not be after to_date")
+    except ValueError as exc:
+        return {"error": str(exc)}
+    for name, value in (("asOfDate", effective_date), ("fromDate", from_date), ("toDate", to_date)):
+        if value:
+            params[name] = value
 
     result = make_odata_request(
         instance,
