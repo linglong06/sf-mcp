@@ -2,11 +2,13 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sf_mcp.metadata_parse import MetadataExtractionError, extract_entity_fields
+from sf_mcp.cache import ResponseCache
+from sf_mcp import client
 from sf_mcp.server import mcp
 from sf_mcp.tools import configuration, mdf
 from sf_mcp.xml_utils import xml_to_dict
@@ -24,6 +26,13 @@ TOOLS = [
     (configuration, "get_configuration", "entity"),
     (mdf, "get_mdf_object_definitions", "object_name"),
 ]
+SERVICE_METADATA = """\
+<Edmx><DataServices><Schema><EntityType Name="Position">
+  <Property Name="code" Type="Edm.String" />
+  <NavigationProperty Name="departmentNav" Relationship="SFOData.department" />
+  <NavigationProperty Name="cust_exampleNav" Relationship="SFOData.example" />
+</EntityType></Schema></DataServices></Edmx>
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +54,39 @@ def invoke(module, name, parameter, entity="Position"):
 def field_map(result):
     fields = result["fields"]
     return {field["name"]: field for field in fields} if isinstance(fields, list) else fields
+
+
+def test_tools_use_complete_service_metadata_and_share_cache():
+    # A scoped endpoint can exclude navigation properties to external entities.
+    # Exercise the actual request and parser rather than mocking the tool result.
+    response = MagicMock(status_code=200)
+    response.text = SERVICE_METADATA
+    session = MagicMock()
+    session.get.return_value = response
+    with patch.object(client, "get_session", return_value=session), \
+         patch.object(client, "get_cache", return_value=ResponseCache()):
+        results = [invoke(*tool) for tool in TOOLS]
+        for result in results:
+            assert result["status"] == "success"
+            fields = field_map(result)
+            assert fields["departmentNav"]["kind"] == "NavigationProperty"
+            assert fields["cust_exampleNav"]["kind"] == "NavigationProperty"
+        session.get.assert_called_once()
+        assert session.get.call_args.args[0].endswith("/odata/v2/$metadata")
+
+
+def test_metadata_cache_is_isolated_by_credentials():
+    response = MagicMock(status_code=200)
+    response.text = SERVICE_METADATA
+    session = MagicMock()
+    session.get.return_value = response
+    with patch.object(client, "get_session", return_value=session), \
+         patch.object(client, "get_cache", return_value=ResponseCache()):
+        args = ("test-instance", "Position", "DC55", "production", "admin")
+        client.make_metadata_request(*args, "password-1")
+        client.make_metadata_request(*args, "password-1")
+        client.make_metadata_request(*args, "password-2")
+    assert session.get.call_count == 2
 
 
 @pytest.mark.parametrize("fixture", ["position_dual_schema.xml", "position_single_schema.xml"])

@@ -393,10 +393,12 @@ def make_metadata_request(
     request_id: str | None = None,
 ) -> dict | None:
     """
-    Fetch XML $metadata for an entity and return parsed dict.
+    Fetch the complete OData service metadata and return its parsed dict.
 
-    Results are automatically cached (metadata changes infrequently).
-    Used by get_configuration and compare_configurations.
+    Entity-scoped metadata can omit navigation properties whose target entity
+    is outside the scoped document. Consumers select the requested entity from
+    the complete metadata instead. The result is shared across entity requests
+    in the same tenant, host and authentication context.
     """
     req_id = request_id or str(uuid.uuid4())[:8]
     start_time = time.time()
@@ -412,7 +414,7 @@ def make_metadata_request(
 
     # Metadata may vary by host and authorization context. Never allow a cached
     # response obtained with another password/account to bypass authentication.
-    cache_endpoint = f"/odata/v2/{entity}/$metadata"
+    cache_endpoint = "/odata/v2/$metadata"
     auth_digest = hashlib.sha256(f"{user_id}\0{password}".encode()).hexdigest()
     cache_context = {"api_host": api_host, "auth_digest": auth_digest}
     cached = get_cache().get(instance, cache_endpoint, cache_context, request_id=req_id)
