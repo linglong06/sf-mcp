@@ -1294,6 +1294,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
+This repository is derived from [aiadiguru2025/sf-mcp](https://github.com/aiadiguru2025/sf-mcp). The original upstream work remains Copyright (c) 2025 aiadiguru2025. Original modifications by Long Ling in this repository are Copyright (c) 2026 Long Ling.
+
 ---
 
 <p align="center">
